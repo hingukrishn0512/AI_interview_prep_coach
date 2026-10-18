@@ -3,6 +3,7 @@ uvicorn[standard]
 pydantic
 python-dotenv
 langgraph
+python-multipart
 langchain
 langchain-groq
 langchain-tavily
