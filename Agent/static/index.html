@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Interview Prep Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #12141c;
+    --panel: #1b1e2a;
+    --input-bg: #232739;
+    --text: #e8e6df;
+    --muted: #8a8fa3;
+    --accent: #e8a33d;
+    --accent-dim: #b97f2e;
+    --hairline: rgba(232, 230, 223, 0.1);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overscroll-behavior: none;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    height: 100dvh;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 680px;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: calc(18px + env(safe-area-inset-top)) 20px 18px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .header-text h1 {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 600;
+    font-size: 18px;
+    margin: 0 0 3px;
+  }
+
+  .header-text p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  #session-badge {
+    display: none;
+    color: var(--accent);
+    font-size: 12.5px;
+  }
+
+  #reset-btn {
+    display: none;
+    background: none;
+    border: 1px solid var(--hairline);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  #reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* --- Setup screen --- */
+
+  #setup {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20px;
+    gap: 18px;
+    overflow-y: auto;
+  }
+
+  #setup .lede {
+    font-family: 'Source Serif 4', serif;
+    font-size: 19px;
+    line-height: 1.5;
+    max-width: 46ch;
+    margin: 0;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; color: var(--muted); }
+
+  .field input {
+    background: var(--input-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 11px 13px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14.5px;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+
+  .field input[type="file"] { padding: 9px 11px; font-size: 13px; }
+  .field input[type="file"]::file-selector-button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--hairline);
+    border-radius: 5px;
+    padding: 5px 10px;
+    margin-right: 10px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .hint { color: var(--muted); font-size: 12px; margin: 0; }
+
+  button.primary {
+    background: var(--accent);
+    color: #1b1400;
+    border: none;
+    border-radius: 6px;
+    padding: 12px 18px;
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:hover { background: var(--accent-dim); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #setup-error { color: #e88a5f; font-size: 13px; display: none; margin: 0; }
+
+  /* --- Chat screen --- */
+
+  #chat-screen {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    animation: rise 0.25s ease-out;
+  }
+  .row.user { flex-direction: row-reverse; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+  .avatar.ai {
+    background: rgba(232, 163, 61, 0.15);
+    color: var(--accent);
+  }
+  .avatar.user {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    color: var(--muted);
+  }
+
+  .bubble-wrap { max-width: 82%; display: flex; flex-direction: column; gap: 4px; }
+  .row.user .bubble-wrap { align-items: flex-end; }
+
+  .bubble {
+    font-size: 14.5px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  .row.user .bubble {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 12px 12px 2px 12px;
+    padding: 10px 14px;
+    white-space: pre-wrap;
+  }
+  .bubble.error { color: #e88a5f; }
+  .bubble p { margin: 0 0 8px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble ul { margin: 4px 0 8px; padding-left: 20px; }
+  .bubble li { margin-bottom: 3px; }
+  .bubble strong { color: var(--text); font-weight: 600; }
+
+  .msg-meta {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .copy-btn, .retry-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+    padding: 0;
+  }
+  .copy-btn:hover, .retry-btn:hover { color: var(--accent); }
+
+  .typing-dots {
+    display: flex;
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* --- Suggestion chips --- */
+
+  #chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 20px 16px;
+    flex-shrink: 0;
+  }
+  #chips:empty { padding: 0; }
+  .chip {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    border-radius: 16px;
+    padding: 7px 13px;
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* --- Composer --- */
+
+  #composer {
+    display: flex;
+    gap: 10px;
+    padding: 14px 20px calc(18px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--hairline);
+    flex-shrink: 0;
+    align-items: flex-end;
+  }
+
+  #user-input {
+    flex: 1;
+    background: var(--input-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14.5px;
+    resize: none;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  #user-input:focus { outline: none; border-color: var(--accent); }
+
+  #send-btn {
+    background: var(--accent);
+    color: #1b1400;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  #send-btn:hover { background: var(--accent-dim); }
+  #send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="header-text">
+      <h1>AI Interview Prep Coach</h1>
+      <p id="header-sub">Practice questions, company research, and resume checks.</p>
+      <div id="session-badge"></div>
+    </div>
+    <button id="reset-btn">New session</button>
+  </header>
+
+  <section id="setup">
+    <p class="lede">Tell me who you're preparing for and upload your resume, and I'll tailor everything to you.</p>
+    <div class="field">
+      <label for="company">Company</label>
+      <input id="company" type="text" placeholder="e.g. Google" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="role">Role</label>
+      <input id="role" type="text" placeholder="e.g. Machine Learning Engineer Intern" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="resume">Resume (PDF)</label>
+      <input id="resume" type="file" accept="application/pdf,.pdf">
+      <p class="hint">Used only for this session to tailor answers. Max 5 MB, text-based PDF (not a scan).</p>
+    </div>
+    <button class="primary" id="start-btn">Start session</button>
+    <p id="setup-error"></p>
+  </section>
+
+  <section id="chat-screen">
+    <div id="messages"></div>
+    <div id="chips"></div>
+    <div id="composer">
+      <textarea id="user-input" rows="1" maxlength="2000" placeholder="Message the coach..."></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+  </section>
+</div>
+
+<script>
+  const API_BASE = "";
+  const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+
+  let threadId = null;
+  let nearBottom = true;
+  let busy = false;        // true while a /chat request is in flight
+  let lastUserText = null; // remembers the last message, for the Retry link on failure
+
+  const setupEl = document.getElementById("setup");
+  const chatScreenEl = document.getElementById("chat-screen");
+  const sessionBadge = document.getElementById("session-badge");
+  const messagesEl = document.getElementById("messages");
+  const setupError = document.getElementById("setup-error");
+  const chipsEl = document.getElementById("chips");
+  const inputEl = document.getElementById("user-input");
+  const sendBtn = document.getElementById("send-btn");
+  const startBtn = document.getElementById("start-btn");
+  const resetBtn = document.getElementById("reset-btn");
+
+  const SUGGESTIONS = [
+    "Give me a DSA question",
+    "Ask me a behavioral question",
+    "Tell me about the company's interview process",
+    "What should I brush up on in my resume?",
+  ];
+
+  // iOS/Android will forcibly scroll the page to keep a focused input above
+  // the on-screen keyboard, even though body/html are pinned with
+  // position: fixed + overflow: hidden. Snapping scroll back to (0, 0)
+  // whenever the visual viewport changes undoes that shift.
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      window.scrollTo(0, 0);
+    });
+  }
+  window.addEventListener("scroll", () => {
+    if (window.scrollY !== 0 || window.scrollX !== 0) {
+      window.scrollTo(0, 0);
+    }
+  });
+
+  startBtn.addEventListener("click", startSession);
+  sendBtn.addEventListener("click", () => sendMessage());
+  resetBtn.addEventListener("click", resetSession);
+
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  inputEl.addEventListener("input", () => {
+    inputEl.style.height = "auto";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
+  });
+
+  messagesEl.addEventListener("scroll", () => {
+    nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+  });
+
+  function showSetupError(message) {
+    setupError.textContent = message;
+    setupError.style.display = "block";
+  }
+
+  async function startSession() {
+    const company = document.getElementById("company").value.trim();
+    const role = document.getElementById("role").value.trim();
+    const resumeFile = document.getElementById("resume").files[0];
+
+    if (!company || !role || !resumeFile) {
+      showSetupError("Please fill in both fields and upload your resume.");
+      return;
+    }
+    if (!resumeFile.name.toLowerCase().endsWith(".pdf")) {
+      showSetupError("Please upload your resume as a PDF file.");
+      return;
+    }
+    if (resumeFile.size > MAX_RESUME_BYTES) {
+      showSetupError("Resume is too large (max 5 MB).");
+      return;
+    }
+
+    startBtn.disabled = true;
+    startBtn.textContent = "Uploading & starting...";
+    setupError.style.display = "none";
+
+    try {
+      const form = new FormData();
+      form.append("company_name", company);
+      form.append("role", role);
+      form.append("resume", resumeFile);
+
+      // No Content-Type header here: the browser sets the multipart boundary itself.
+      const res = await fetch(`${API_BASE}/session`, { method: "POST", body: form });
+
+      if (!res.ok) {
+        let detail = "Couldn't start a session. Please try again.";
+        try {
+          const body = await res.json();
+          if (typeof body.detail === "string") detail = body.detail;
+        } catch (_) {
+          // response wasn't JSON — keep the generic message
+        }
+        throw new Error(detail);
+      }
+
+      const data = await res.json();
+      threadId = data.thread_id;
+
+      sessionBadge.textContent = `${company} · ${role}`;
+      sessionBadge.style.display = "block";
+      resetBtn.style.display = "block";
+
+      setupEl.style.display = "none";
+      chatScreenEl.style.display = "flex";
+
+      addMessage("ai", "Ask me for a DSA question, a behavioral question, company research, or anything about your resume — like a gap analysis, or how to explain one of your projects.");
+      renderChips();
+
+      // Don't auto-focus the composer here. Focusing immediately pops the
+      // mobile keyboard open mid-transition and pushes the header out of view.
+    } catch (err) {
+      const offline = err instanceof TypeError; // fetch itself failed
+      showSetupError(offline
+        ? "Couldn't reach the server. Check your connection and try again."
+        : (err.message || "Couldn't start a session. Please try again."));
+      startBtn.disabled = false;
+      startBtn.textContent = "Start session";
+    }
+  }
+
+  function resetSession(errorMessage) {
+    // Tell the server to free this session's resume and history (best effort).
+    if (threadId) {
+      fetch(`${API_BASE}/session/${encodeURIComponent(threadId)}`, {
+        method: "DELETE",
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    threadId = null;
+    lastUserText = null;
+    busy = false;
+    sendBtn.disabled = false;
+    messagesEl.innerHTML = "";
+    chipsEl.innerHTML = "";
+    sessionBadge.style.display = "none";
+    resetBtn.style.display = "none";
+    chatScreenEl.style.display = "none";
+    setupEl.style.display = "flex";
+    document.getElementById("company").value = "";
+    document.getElementById("role").value = "";
+    document.getElementById("resume").value = "";
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    startBtn.disabled = false;
+    startBtn.textContent = "Start session";
+
+    // The button passes a click event as the first argument, so only accept strings.
+    if (typeof errorMessage === "string" && errorMessage) {
+      showSetupError(errorMessage);
+    } else {
+      setupError.style.display = "none";
+    }
+  }
+
+  function renderChips() {
+    chipsEl.innerHTML = "";
+    SUGGESTIONS.forEach((text) => {
+      const chip = document.createElement("button");
+      chip.className = "chip";
+      chip.textContent = text;
+      chip.addEventListener("click", () => sendMessage(text));
+      chipsEl.appendChild(chip);
+    });
+  }
+
+  // isRetry = true re-sends the last message without adding a second copy of
+  // it to the chat window.
+  async function sendMessage(overrideText, isRetry = false) {
+    if (busy || !threadId) return;
+
+    const text = (overrideText ?? inputEl.value).trim();
+    if (!text) return;
+
+    busy = true;
+    lastUserText = text;
+    chipsEl.innerHTML = "";
+    if (!isRetry) addMessage("user", text);
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+
+    sendBtn.disabled = true;
+    const typingRow = addTypingIndicator();
+
+    try {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread_id: threadId, user_input: text }),
+      });
+
+      typingRow.remove();
+
+      if (!res.ok) {
+        // The server restarted or the session was cleaned up: send the
+        // user back to the setup screen to upload their resume again.
+        if (res.status === 404) {
+          resetSession("Your session expired. Please start a new session and upload your resume again.");
+          return;
+        }
+
+        // Surface the real backend message instead of a generic one.
+        let detail = `Request failed (${res.status}).`;
+        try {
+          const errBody = await res.json();
+          if (errBody && typeof errBody.detail === "string") detail = errBody.detail;
+        } catch (_) {
+          // response wasn't JSON — keep the generic message
+        }
+        const isRetryable = res.status >= 500 || res.status === 429;
+        addMessage("ai", detail, { isError: true, showRetry: isRetryable });
+        return;
+      }
+
+      const data = await res.json();
+      addMessage("ai", data.final_result);
+    } catch (err) {
+      typingRow.remove();
+      addMessage(
+        "ai",
+        "Couldn't reach the server. Check your connection and try again.",
+        { isError: true, showRetry: true }
+      );
+    } finally {
+      busy = false;
+      if (threadId) sendBtn.disabled = false;
+    }
+  }
+
+  function scrollToBottomIfNeeded() {
+    if (nearBottom) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  }
+
+  function addTypingIndicator() {
+    const row = document.createElement("div");
+    row.className = "row ai";
+    row.innerHTML = `
+      <div class="avatar ai">C</div>
+      <div class="bubble-wrap">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+      </div>
+    `;
+    messagesEl.appendChild(row);
+    nearBottom = true;
+    scrollToBottomIfNeeded();
+    return row;
+  }
+
+  function addMessage(role, text, opts) {
+    opts = opts || {};
+    const row = document.createElement("div");
+    row.className = `row ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = `avatar ${role}`;
+    avatar.textContent = role === "ai" ? "C" : "Y";
+
+    const wrap = document.createElement("div");
+    wrap.className = "bubble-wrap";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble" + (opts.isError ? " error" : "");
+    bubble.innerHTML = role === "ai" ? renderMarkdownLite(text) : escapeHtml(text);
+
+    wrap.appendChild(bubble);
+
+    if (role === "ai") {
+      const meta = document.createElement("div");
+      meta.className = "msg-meta";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "copy-btn";
+      copyBtn.textContent = "Copy";
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          copyBtn.textContent = "Copied";
+        } catch (_) {
+          copyBtn.textContent = "Copy failed";
+        }
+        setTimeout(() => (copyBtn.textContent = "Copy"), 1200);
+      });
+      meta.appendChild(copyBtn);
+
+      if (opts.showRetry && lastUserText) {
+        const retryBtn = document.createElement("button");
+        retryBtn.className = "retry-btn";
+        retryBtn.textContent = "Retry";
+        retryBtn.addEventListener("click", () => {
+          row.remove(); // drop the old error message, then try again
+          sendMessage(lastUserText, true);
+        });
+        meta.appendChild(retryBtn);
+      }
+
+      wrap.appendChild(meta);
+    }
+
+    row.appendChild(avatar);
+    row.appendChild(wrap);
+    messagesEl.appendChild(row);
+    scrollToBottomIfNeeded();
+    return row;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Minimal, safe markdown rendering: escapes HTML first, then adds
+  // support for **bold**, "- " bullet lists, and paragraph breaks.
+  function renderMarkdownLite(raw) {
+    const escaped = escapeHtml(String(raw ?? ""));
+    const lines = escaped.split("\n");
+    let html = "";
+    let inList = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        if (!inList) { html += "<ul>"; inList = true; }
+        html += `<li>${inlineFormat(trimmed.slice(2))}</li>`;
+      } else {
+        if (inList) { html += "</ul>"; inList = false; }
+        if (trimmed.length > 0) {
+          html += `<p>${inlineFormat(trimmed)}</p>`;
+        }
+      }
+    }
+    if (inList) html += "</ul>";
+    return html || `<p>${inlineFormat(escaped)}</p>`;
+  }
+
+  function inlineFormat(text) {
+    return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  }
+</script>
+
+</body>
+</html>
