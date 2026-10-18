@@ -128,11 +128,17 @@ def start_session(
             tmp.write(data)
             tmp_path = tmp.name
         register_resume(thread_id, tmp_path)
-    except Exception as e:
-        logger.error("Resume parsing failed: %s", e)
+    except ValueError as e:
+        logger.error("Resume has no readable text: %s", e)
         raise HTTPException(
             status_code=400,
             detail="Couldn't read text from that PDF. Make sure it isn't a scanned image.",
+        )
+    except Exception as e:
+        logger.error("Resume processing failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Couldn't process your resume. Please try again.",
         )
     finally:
         # the uploaded PDF itself is never kept on disk

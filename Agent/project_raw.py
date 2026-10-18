@@ -11,11 +11,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from langchain_tavily import TavilySearch
 from langchain_groq import ChatGroq
-from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
-from light_embeddings import LightHFEmbeddings
 
 
 load_dotenv()
@@ -37,7 +34,6 @@ tools = [search_tool]
 llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.2)
 llm_tools = llm.bind_tools(tools)
 
-embedings = LightHFEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
 class RateLimitExceeded(Exception):
@@ -160,50 +156,48 @@ class state(TypedDict):
 # ============================================================
 # Per-session resume storage
 # ============================================================
-# thread_id -> retriever. One per user session, kept in memory only.
-# (Can't live inside the LangGraph state: FAISS objects aren't serializable.)
+# thread_id -> full resume text. One per user session, kept in memory only.
+# A resume is only 1-2 pages, so the whole text goes into the prompt: no
+# embeddings, no external API, and no risk of retrieval missing a project.
 
-RESUME_RETRIEVERS = {}
+RESUME_TEXTS = {}
 RESUME_CREATED_AT = {}
+MAX_RESUME_CHARS = 15000   # ~4k tokens, far more than a normal resume
 _resume_lock = threading.Lock()
 
 
 def register_resume(thread_id: str, pdf_path: str):
-    """Builds a retriever from the uploaded PDF and stores it for this session.
+    """Extracts the resume text and stores it for this session.
     Raises ValueError if the PDF has no extractable text."""
     documents = PyPDFLoader(pdf_path).load()
-    if not any(d.page_content.strip() for d in documents):
+    text = "\n\n".join(d.page_content for d in documents).strip()
+    if not text:
         raise ValueError("No readable text found (scanned/image-only PDF?)")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_documents(documents)
-    store = FAISS.from_documents(chunks, embedings)
-    retriever = store.as_retriever(search_kwargs={"k": 5})
-
     with _resume_lock:
-        RESUME_RETRIEVERS[thread_id] = retriever
+        RESUME_TEXTS[thread_id] = text[:MAX_RESUME_CHARS]
         RESUME_CREATED_AT[thread_id] = time.time()
 
 
 def has_resume(thread_id: str) -> bool:
     with _resume_lock:
-        return thread_id in RESUME_RETRIEVERS
+        return thread_id in RESUME_TEXTS
 
 
 def clear_resume(thread_id: str):
     with _resume_lock:
-        RESUME_RETRIEVERS.pop(thread_id, None)
+        RESUME_TEXTS.pop(thread_id, None)
         RESUME_CREATED_AT.pop(thread_id, None)
 
 
 def pop_expired_sessions(max_age_seconds: int = 2 * 60 * 60) -> list:
-    """Removes retrievers older than max_age_seconds and returns their
+    """Removes resumes older than max_age_seconds and returns their
     thread_ids, so the API layer can also delete their chat checkpoints."""
     cutoff = time.time() - max_age_seconds
     with _resume_lock:
         expired = [t for t, ts in RESUME_CREATED_AT.items() if ts < cutoff]
         for t in expired:
-            RESUME_RETRIEVERS.pop(t, None)
+            RESUME_TEXTS.pop(t, None)
             RESUME_CREATED_AT.pop(t, None)
     return expired
 
@@ -652,9 +646,9 @@ def resume_gap_node(state: state, config: RunnableConfig) -> dict:
 
     thread_id = config["configurable"]["thread_id"]
     with _resume_lock:
-        retriever = RESUME_RETRIEVERS.get(thread_id)
+        resume_text = RESUME_TEXTS.get(thread_id)
 
-    if retriever is None:
+    if not resume_text:
         final_result = ("I don't have a resume for this session yet. "
                         "Please start a new session and upload your resume.")
         return {
@@ -662,12 +656,9 @@ def resume_gap_node(state: state, config: RunnableConfig) -> dict:
             "messages": [("ai", final_result)],
         }
 
-    # Search with the user's actual question plus the role, so a question like
-    # "explain my chatbot project" pulls the matching chunks instead of a
-    # fixed generic query.
-    query = f"{user_message}. skills, experience, and projects relevant to a {role} position"
-    retrieved_docs = retriever.invoke(query)
-    resume_context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    # The whole resume goes into the prompt, so any question about any part of
+    # it (a project, a skill, an internship) is always answerable.
+    resume_context = resume_text
 
     prompt = f"""You are a career coach helping a candidate prepare for a job interview
 for {role} at {company_name}. You have the candidate's actual resume content below —
@@ -700,7 +691,7 @@ CRITICAL INSTRUCTIONS:
 role:
 {role} at {company_name}
 
-resume context:
+full resume:
 \"\"\"{resume_context}\"\"\"
 
 candidate's request:
